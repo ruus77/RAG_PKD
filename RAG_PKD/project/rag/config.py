@@ -1,6 +1,6 @@
 # config.py
 import os
-
+from pathlib import Path
 # -------------------------
 # KONFIGURACJA MLFLOW
 # -------------------------
@@ -23,8 +23,25 @@ else:
 # -------------------------
 # KONFIGURACJA OLLAMA
 # -------------------------
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0"
+
+BASE_DIR = Path("/home/onyxia/work/RAG_PKD/RAG_PKD/")
+RESOURCE_DIR = BASE_DIR / "resources"
+
+
+EXCEL_FILE = RESOURCE_DIR / "StrukturaPKD2025.xls"
+PDF_FILE = RESOURCE_DIR / "KlasyfikacjaPKD2025.pdf"
+DB_FAISS_PATH = RESOURCE_DIR / "db_faiss"
+
+
+
+
+EMBEDDING_MODEL = 'sdadas/stella-pl-retrieval-8k'
+CROSSENCOER_MODEL = 'sdadas/polish-reranker-roberta-v3'
+
+OLLAMA_URL = "http://localhost:11434"
+
+MODEL_NAME = "SpeakLeash/bielik-11b-v2.3-instruct:Q8_0"
+
 #
 # ollama run SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0
 # "SpeakLeash/bielik-11b-v3.0-instruct:Q4_K_M"
@@ -32,59 +49,10 @@ MODEL_NAME = "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0"
 # -------------------------
 # ŚCIEŻKI PLIKÓW - POPRAWIONE
 # -------------------------
-# Ścieżka do folderu projektu (gdzie jest config.py)
-_script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Ścieżka do głównego folderu repozytorium (o jeden poziom wyżej niż project)
-_project_root = os.path.dirname(_script_dir)
-
-RAG_SCRIPT = os.path.join(_script_dir, "rag", "train_rag.py")
-SUPERVISED_SCRIPT = os.path.join(_project_root, "train_supervised.py")  # jeśli w głównym folderze
-EVAL_SCRIPT = os.path.join(_project_root, "evaluate.py")  # jeśli w głównym folderze
-# Ścieżka do folderu resources
-_resources_dir = os.path.join(_project_root, "resources")
-
-# Pliki w folderze resources
-PDF_FILE = os.path.join(_resources_dir, "../../resources/KlasyfikacjaPKD2025.pdf")
-EXCEL_FILE = os.path.join(_resources_dir, "../../resources/StrukturaPKD2025.xls")
-
-# Cache w folderze projektu (project/pkd_cache.pkl)
-CACHE_FILE = os.path.join(_script_dir, "pkd_cacexcel_loaderhe.pkl")
-
-# -------------------------
-# SPRAWDZENIE ŚCIEŻEK (opcjonalne - do debugowania)
-# -------------------------
-print(f"📁 Struktura katalogów:")
-print(f"   - Folder projektu (project): {_script_dir}")
-print(f"   - Główny folder repozytorium: {_project_root}")
-print(f"   - Folder resources: {_resources_dir}")
-print(f"   - Plik PDF: {PDF_FILE}")
-print(f"   - Plik Excel: {EXCEL_FILE}")
-print(f"   - Plik cache: {CACHE_FILE}")
-
-# Sprawdź czy pliki istnieją (ostrzeżenia)
-if not os.path.exists(PDF_FILE):
-    print(PDF_FILE)
-    print(f"⚠️  UWAGA: Plik PDF nie istnieje: {PDF_FILE}")
-if not os.path.exists(EXCEL_FILE):
-    print(EXCEL_FILE)
-    print(f"⚠️  UWAGA: Plik Excel nie istnieje: {EXCEL_FILE}")
-
-# -------------------------
-# PARAMETRY MODELU
-# -------------------------
-# Źródła danych - wybierz które źródła użyć
-USE_PDF = True  # Włączone - plik PDF w resources
-USE_EXCEL = True  # Włączone - plik Excel w resources
-
-# Embedding model - lepszy dla semantyki biznesowej i handlu
-EMBEDDING_MODEL = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
-RERANKER_MODEL = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
-
-# liczba fragmentów do zwrócenia z wyszukiwania semantycznego (kandydaci)
 TOP_K = 50
 RERANK_TOP_N = 2000
-TEMPERATURE = 0.05
+TEMPERATURE = 0.1
 
 # -------------------------
 # TEST QUERIES
@@ -109,7 +77,7 @@ CORRECT_PKD = {
     "Jaki będzie kod PKD dla montażu folii zacieniających i antywłamaniowych na szybę?": "43.34.Z",
     "Jaki będzie kod dla montażu nagrobków z gotowych elementów?": "43.99.Z",
     "Do jakiego kodu można przypisać sprzedaż suplementów diety?": "46.39.Z",
-    "Który kod PKD opisuje sprzedaż waty cukrowej i popcornu na stoisku podczas imprezy masowej?": "56.12.Z",
+    "Który kod PKD opisuje sprzedaż waty cukrowej i popcornu na stoisku podczas imprezy masowej?": "56.12.Z", 
     "Jaki będzie kod PKD dla windykacji ?": "82.91.Z",
     "Jaki będzie kod PKD dla szkoleń BHP?": "85.59.D",
     "Jaki będzie kod PKD dla sprzedaży proszku do prania w hurcie": "46.44.Z",
@@ -156,7 +124,7 @@ Trening_QUERIES_aug = [
     "Który kod PKD opisuje zawód stewardesy?"
 ]
 
-Trening_PKD_aug = {
+PDK_TEST = {
     "Jaki kod PKD odpowiada instalacji balii ogrodowych do kąpieli?": "43.22.Z",
     "Który kod PKD obejmuje montowanie balii kąpielowych?": "43.22.Z",
     "Pod jakim PKD można prowadzić montaż balii kąpielowych?": "43.22.Z",

@@ -2,6 +2,9 @@ import fitz
 import re
 import pandas as pd
 from config import PDF_FILE, EXCEL_FILE
+from langchain_community.document_loaders import DataFrameLoader
+
+
 
 class DataLoader:
     def __init__(self, pdf_path: str = None, excel_path: str = None):
@@ -99,3 +102,68 @@ class DataLoader:
 
         print(f"Po złączeniu i wyczyszczeniu: {len(df)} unikalnych kodów PKD")
         return df
+
+
+
+class PKDDataImporter:
+    def __init__(self):
+        self.url = "https://klasyfikacje.stat.gov.pl/static/pkd_25/pdf/Wyjasnienia_PKD_2025.xls"
+        self.url_codes = "https://klasyfikacje.stat.gov.pl/static/pkd_25/pdf/StrukturaPKD2025.xls"
+        self._df = None
+        self._codes = None
+        self._missing_codes_list = None
+
+    def _get_frames(self):
+        """Pobiera surowe dane z URL, jeśli nie zostały jeszcze pobrane."""
+        if self._df is None or self._codes is None:
+            # Poprawione wczytywanie - usecols musi zgadzać się z listą names lub być indeksowane
+            self._codes = pd.read_excel(self.url_codes, names=["c1", "c2", "c3", "code", "desc"], usecols=[3, 4])
+            self._df = pd.read_excel(self.url, header=None, names=["code", "desc"])
+        return self._df.copy(), self._codes.copy()
+
+    def _prepare_frames(self):
+        """Czyści i agreguje dane."""
+        df, codes = self._get_frames()
+        
+        # Agregacja opisów rozbitych na wiele wierszy
+        df['group'] = df['code'].notna().cumsum()
+        df = df.groupby('group').agg({
+            'code': 'first',
+            'desc': lambda x: ' '.join(x.dropna().astype(str))
+        }).reset_index(drop=True)
+        
+        df['desc'] = df['desc'].str.replace(r'\s+', ' ', regex=True).str.strip()
+        # Filtrowanie tylko konkretnych kodów kończących się na .Z
+        df = df[df['code'].astype(str).str.contains(r'\.Z', na=False)]
+        
+        codes.dropna(inplace=True)
+        # Usunięcie nagłówka jeśli istnieje
+        if not codes.empty:
+            codes = codes.iloc[1:].reset_index(drop=True)
+
+        return df, codes
+
+    def _get_missing_codes(self, df, codes):
+        """Identyfikuje kody obecne w strukturze, a nieobecne w wyjaśnieniach."""
+        if self._missing_codes_list is None:
+            df_codes = set(df.code.unique())
+            self._missing_codes_list = [c for c in codes.code.unique() if c not in df_codes]
+        return self._missing_codes_list
+
+    def _merge_frames(self):
+        """Łączy przetworzone dane w jeden DataFrame."""
+        df, codes = self._prepare_frames()
+        missing_list = self._get_missing_codes(df, codes)
+        
+        # Pobieramy brakujące kody z ramki 'codes'
+        missing_df = codes[codes.code.isin(missing_list)]
+        
+        return pd.concat([df, missing_df], axis=0, ignore_index=True)
+
+    def get_loaders(self):
+        """Zwraca listę dokumentów gotową dla LangChain."""
+        df = self._merge_frames()
+        df['code'] = df['code'].astype("string")
+        df['desc'] = df['desc'].astype("string")
+        loader = DataFrameLoader(df, page_content_column="desc")
+        return loader.load()

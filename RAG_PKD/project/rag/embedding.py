@@ -1,40 +1,50 @@
-import pandas as pd
-from sentence_transformers import CrossEncoder
-import numpy as np
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.documents import Document
-
-from data_loader import DataLoader
-from config import (PDF_FILE,
-                    EXCEL_FILE)
-
-EMBEDDING_MODEL = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
-CROSSENCOER_MODEL = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
+from sentence_transformers.util import cos_sim
+import os
 
 
-loader = DataLoader(pdf_path=PDF_FILE,
-                    excel_path=EXCEL_FILE)
-data = loader.load_data()
-documents = []
+class EmbeddingProcessor:
+    def __init__(self, embedding_model, crossencoder_model, top_k, documents, db_path):
+        self.embedding_model = embedding_model
+        self.crossencoder_model = crossencoder_model
+        self.top_k = top_k
+        self.documents = documents
+        self.db_path = db_path
+        self.db = None
 
-for idx, row in data.iterrows():
-    content = f"{row['pkd_code']} | {row['full_text']}"
-    metadata = {"pkd_code": row['pkd_code']}
-    documents.append(Document(page_content=content, metadata=metadata))
+    def create_or_load_db(self):
+        
+        if os.path.exists(self.db_path):
+            self.db = FAISS.load_local(
+                    self.db_path, 
+                    self.embedding_model, 
+                    allow_dangerous_deserialization=True)
 
-embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        else:
+            self.db = FAISS.from_documents(documents=self.documents, embedding=self.embedding_model)
+            self.db.save_local(self.db_path)
+        return self.db
+    
+    def get_cos_sim(self, query, doc):
+        query_embed = self.embedding_model.embed_query(query)
+        doc_embed = self.embedding_model.embed_query(doc)
+        return cos_sim(query_embed, doc_embed)
 
-db = FAISS.from_documents(documents=documents, embedding=embeddings)
-reranker = CrossEncoder(CROSSENCOER_MODEL)
+    def _get_initial_candidates(self, query):
+        
+        if not self.db:
+            self.create_or_load_db()
+        return self.db.similarity_search(query, k=self.top_k)
 
-query="Dzień dobry, proszę o wskazanie właściwego, pięcioznakowego kodu PKD dla działalności gospodarczej polegającej na świadczeniu usług specjalistycznych w sektorze handlu ryżem. Zależy mi na kodzie, który najlepiej oddaje charakter przeważającej działalności zgodnie z aktualną klasyfikacją."
-docs_result = db.similarity_search(query, k=10)
 
-pairs = [[query, doc.page_content] for doc in docs_result]
-scores = reranker.predict(pairs)
+    def get_reranked_embeds(self, 
+                            query:str, 
+                            counter:int=5) -> list[tuple]:
 
-reranked_results = [doc for _, doc in sorted(zip(scores, docs_result), key=lambda x: x[0], reverse=True)]
-
-for i in range(3):
-    print(reranked_results[i].metadata)
+        initial_docs = self._get_initial_candidates(query)
+        pairs = [[query, doc.page_content] for doc in initial_docs]
+        
+        scores = self.crossencoder_model.predict(pairs)
+        scored_docs = sorted(zip(scores, initial_docs), key=lambda x: x[0], reverse=True)
+        
+        return scored_docs[:counter]
